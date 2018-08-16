@@ -24,13 +24,28 @@
 -export([
    start_link/1,
    start_link/2,
-   init/1, 
+   init/1,
    terminate/2,
-   handle_call/3, 
-   handle_cast/2, 
+   handle_call/3,
+   handle_cast/2,
    handle_info/2,
    code_change/3
 ]).
+-export_type([options/0]).
+
+-type(options() :: [option()]).
+-type(option()  ::
+     {type,   set | ordered_set}                    % - cache segment type (default set)
+   | {policy, lru | mru}                            % - cache eviction policy
+   | {memory, integer()}                            % - cache memory quota in bytes
+   | {size,   integer()}                            % - cache cardinality quota
+   | {n,      integer()}                            % - number of cache segments
+   | {ttl,    integer()}                            % - default time-to-live in seconds
+   | {check,  integer()}                            % - frequency of quota check in seconds
+   | {stats,  function() | {module(), Fun::atom()}} % - cache statistic aggregate functor
+   | {heir,   atom() | pid()}                       % - heir of evicted cache segments
+).
+
 
 %% internal bucket state
 -record(cache, {
@@ -40,24 +55,24 @@
   ,policy = ?DEF_CACHE_POLICY :: integer()  %% eviction policy
   ,check  = ?DEF_CACHE_CHECK  :: integer()  %% status check timeout
   ,evict  = undefined         :: integer()  %% evict timeout
-  ,stats  = undefined         :: any()      %% stats aggregation functor 
+  ,stats  = undefined         :: any()      %% stats aggregation functor
   ,heir   = undefined         :: pid()      %% the heir of evicted cache segment
 }).
 
-%%%----------------------------------------------------------------------------   
+%%%----------------------------------------------------------------------------
 %%%
 %%% Factory
 %%%
-%%%----------------------------------------------------------------------------   
+%%%----------------------------------------------------------------------------
 
 start_link(Opts) ->
    gen_server:start_link(?MODULE, [undefined, Opts], []).
 
-start_link({global, Name}, Opts) ->
-   gen_server:start_link({global, Name}, ?MODULE, [Name, Opts], []);
 
+start_link(Name, Opts) when is_atom(Name) ->
+   gen_server:start_link({local, Name},  ?MODULE, [Name, Opts], []);
 start_link(Name, Opts) ->
-   gen_server:start_link({local, Name},  ?MODULE, [Name, Opts], []).
+   gen_server:start_link(Name, ?MODULE, [Name, Opts], []).
 
 init([Name, Opts]) ->
    {ok, init(Opts, Opts, #cache{name=Name})}.
@@ -91,17 +106,17 @@ init([], Opts, State) ->
    State#cache{heap=Heap, evict=Evict}.
 
 %%
-%%     
+%%
 terminate(_Reason, State) ->
    cache_heap:purge(State#cache.heap, State#cache.heir),
    ok.
 
 
-%%%----------------------------------------------------------------------------   
+%%%----------------------------------------------------------------------------
 %%%
 %%% gen_server
 %%%
-%%%----------------------------------------------------------------------------   
+%%%----------------------------------------------------------------------------
 
 handle_call({put, Key, Val, TTL}, _, State) ->
    {reply, ok, cache_put(Key, Val, TTL, State)};
@@ -229,15 +244,15 @@ handle_info(_, S) ->
    {noreply, S}.
 
 %%
-%% 
+%%
 code_change(_Vsn, S, _Extra) ->
    {ok, S}.
 
-%%%----------------------------------------------------------------------------   
+%%%----------------------------------------------------------------------------
 %%%
 %%% private
 %%%
-%%%----------------------------------------------------------------------------   
+%%%----------------------------------------------------------------------------
 
 %%
 %% insert value to cache
@@ -340,7 +355,7 @@ cache_apply(Key, Fun, State) ->
          {undefined, State};
       Val ->
          {Val, cache_put(Key, Val, undefined, State)}
-   end.   
+   end.
 
 %%
 %% @todo: reduce one write
@@ -372,7 +387,7 @@ tuple_acc(List, X) ->
          erlang:setelement(Pos, Acc, erlang:element(Pos, Acc) + Val)
       end,
       X,
-      List 
+      List
    ).
 
 
@@ -427,7 +442,7 @@ cache_append(Key, Val, State) ->
 %% remove key from heap segments
 heap_remove(Key, Heap) ->
    lists:foreach(
-      fun({_, Id}) -> ets:delete(Id, Key) end, 
+      fun({_, Id}) -> ets:delete(Id, Key) end,
       Heap
    ).
 

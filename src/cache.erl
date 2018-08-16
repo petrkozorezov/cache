@@ -16,16 +16,16 @@
 %%  @description
 %%   segmented in-memory cache
 %%      * cache memory is split into N segments
-%%      * cache applies eviction and quota policies at segment level 
+%%      * cache applies eviction and quota policies at segment level
 %%        (e.g. whole segments is destroyed at time)
 %%      * cache add new items to youngest segment
-%%      * cache lookup items from youngest to oldest segment  
+%%      * cache lookup items from youngest to oldest segment
 %%
 %%  @todo
 %%   * procedure to get / lookup multiple keys (e.g. get_, getm, ...)
 %%   * unit tests (improve coverage)
 %%   * cache read/write through handler
-%%   * memcached protocol 
+%%   * memcached protocol
 -module(cache).
 -author('Dmitry Kolesnikov <dmkolesnikov@gmail.com>').
 
@@ -44,23 +44,23 @@
 %% basic cache i/o interface
 -export([
    put/3,
-   put/4, 
-   put/5, 
-   put_/3, 
-   put_/4, 
+   put/4,
+   put/5,
+   put_/3,
+   put_/4,
    put_/5,
    get/2,
-   get/3,  
-   get_/2, 
+   get/3,
+   get_/2,
    lookup/2,
-   lookup/3, 
+   lookup/3,
    lookup_/2,
-   has/2, 
+   has/2,
    has/3,
-   ttl/2, 
+   ttl/2,
    ttl/3,
-   remove/2,  
-   remove/3, 
+   remove/2,
+   remove/3,
    remove_/2,
    remove_/3,
    apply/3,
@@ -107,38 +107,33 @@
 ]).
 -export([start/0]).
 
+-export_type([cache_reg_name/0]).
 -export_type([cache/0]).
+-export_type([options/0]).
 
--type(cache()  :: atom() | pid()).
--type(key()    :: any()).
--type(val()    :: any()).
--type(ttl()    :: integer() | undefined).
--type(acc()    :: integer() | [{integer(), integer()}]).
+-type(cache_reg_name() :: atom() | {global, atom()} | {via, atom(), term()}).
+-type(cache()          :: atom() | pid() | {global, atom()} | {via, atom(), term()}).
+-type(key()            :: any()).
+-type(val()            :: any()).
+-type(ttl()            :: integer() | undefined).
+-type(acc()            :: integer() | [{integer(), integer()}]).
+-type(options()        :: cache_bucket:options()).
 
 %%
 %% RnD start application
 start() ->
    application:start(cache).
 
-%%%----------------------------------------------------------------------------   
+%%%----------------------------------------------------------------------------
 %%%
 %%% cache management interface
 %%%
-%%%----------------------------------------------------------------------------   
+%%%----------------------------------------------------------------------------
 
 %%
-%% start new cache bucket, accepted options:
-%%    {type,   set | ordered_set} - cache segment type (default set)
-%%    {policy, lru | mru} - cache eviction policy
-%%    {memory, integer()} - cache memory quota in bytes
-%%    {size,   integer()} - cache cardinality quota
-%%    {n,      integer()} - number of cache segments
-%%    {ttl,    integer()} - default time-to-live in seconds
-%%    {check,  integer()} - frequency of quota check in seconds
-%%    {stats,  function() | {Mod, Fun}} - cache statistic aggregate functor 
-%%    {heir,   atom() | pid()} - heir of evicted cache segments
--spec(start_link(list()) -> {ok, pid()} | {error, any()}).
--spec(start_link(atom(), list()) -> {ok, pid()} | {error, any()}).
+%% start new cache bucket
+-spec(start_link(options()) -> {ok, pid()} | {error, any()}).
+-spec(start_link(cache_reg_name(), options()) -> {ok, pid()} | {error, any()}).
 
 start_link(Opts) ->
    cache_bucket:start_link(Opts).
@@ -163,7 +158,7 @@ purge(Cache) ->
 
 %%
 %% return cache meta data
-%%    {heap,   [integer()]} - references to cache segments 
+%%    {heap,   [integer()]} - references to cache segments
 %%    {expire, [integer()]} - cache segments expiration times
 %%    {size,   [integer()]} - cardinality of cache segments
 %%    {memory, [integer()]} - memory occupied by each cache segment
@@ -171,7 +166,7 @@ purge(Cache) ->
 -spec(i(cache(), atom()) -> list()).
 
 i(Cache) ->
-   gen_server:call(Cache, i).   
+   gen_server:call(Cache, i).
 
 i(Cache, Name) ->
    proplists:get_value(Name, i(Cache)).
@@ -184,11 +179,11 @@ heap(Cache, N) ->
    gen_server:call(Cache, {heap, N}).
 
 
-%%%----------------------------------------------------------------------------   
+%%%----------------------------------------------------------------------------
 %%%
 %%% basic cache i/o interface
 %%%
-%%%----------------------------------------------------------------------------   
+%%%----------------------------------------------------------------------------
 
 %%
 %% synchronous cache put
@@ -261,12 +256,12 @@ lookup_(Cache, Key) ->
    cast(Cache, {lookup, Key}).
 
 %%
-%% check if cache key exists, 
+%% check if cache key exists,
 -spec(has(cache(), key()) -> true | false).
 -spec(has(cache(), key(), timeout()) -> true | false).
 
 has(Cache, Key) ->
-   cache:has(Cache, Key, ?CONFIG_TIMEOUT).   
+   cache:has(Cache, Key, ?CONFIG_TIMEOUT).
 
 has(Cache, Key, Timeout) ->
    call(Cache, {has, Key}, Timeout).
@@ -337,14 +332,14 @@ apply_(Cache, Key, Fun, true) ->
 apply_(Cache, Key, Fun, false) ->
    cast(Cache, {apply, Key, Fun}).
 
-%%%----------------------------------------------------------------------------   
+%%%----------------------------------------------------------------------------
 %%%
 %%% extended cache i/o interface
 %%%
-%%%----------------------------------------------------------------------------   
+%%%----------------------------------------------------------------------------
 
 %%
-%% synchronous in-cache accumulator 
+%% synchronous in-cache accumulator
 -spec(acc(cache(), key(), acc()) -> integer() | undefined).
 -spec(acc(cache(), key(), acc(), timeout()) -> integer() | undefined).
 
@@ -382,7 +377,7 @@ set(Cache, Key, Val, TTL) ->
 
 set(Cache, Key, Val, TTL, Timeout) ->
    cache:put(Cache, Key, Val, TTL, Timeout).
-   
+
 %%
 %% asynchronous store key/val
 -spec(set_(cache(), key(), val()) -> ok | reference()).
@@ -466,7 +461,7 @@ replace_(Cache, Key, Val, TTL, false) ->
 
 
 %%
-%% synchronously add data to existing key after existing data, 
+%% synchronously add data to existing key after existing data,
 %% the operation do not prolong entry ttl
 -spec(append(cache(), key(), val()) -> ok | {error, not_found}).
 -spec(append(cache(), key(), val(), timeout()) -> ok | {error, not_found}).
@@ -478,7 +473,7 @@ append(Cache, Key, Val, Timeout) ->
    call(Cache, {append, Key, Val}, Timeout).
 
 %%
-%% asynchronously add data to existing key after existing data, 
+%% asynchronously add data to existing key after existing data,
 %% the operation do not prolong entry ttl
 -spec(append_(cache(), key(), val()) -> ok | reference()).
 -spec(append_(cache(), key(), val(), true | false) -> ok | reference()).
@@ -542,27 +537,35 @@ delete_(Cache, Key, Flag) ->
    cache:remove_(Cache, Key, Flag).
 
 
-%%%----------------------------------------------------------------------------   
+%%%----------------------------------------------------------------------------
 %%%
 %%% private
 %%%
-%%%----------------------------------------------------------------------------   
+%%%----------------------------------------------------------------------------
 
 %%
 %% synchronous call to server, client is blocks
-call(Pid, Req, Timeout) ->
-   gen_server:call(Pid, Req, Timeout).
+call(Ref, Req, Timeout) ->
+   gen_server:call(Ref, Req, Timeout).
 
 %%
-%% asynchronous call to server, 
+%% asynchronous call to server,
 %% the request is acknowledged using reference
-cast(Pid, Req) ->
+cast(Ref, Req) ->
    Ref = erlang:make_ref(),
-   erlang:send(Pid, {'$gen_call', {self(), Ref}, Req}, [noconnect]),
+   erlang:send(where(Ref), {'$gen_call', {self(), Ref}, Req}, [noconnect]),
    Ref.
 
 %%
 %% fire-and-forget
-send(Pid, Req) ->
-   gen_server:cast(Pid, Req).
+send(Ref, Req) ->
+   gen_server:cast(Ref, Req).
 
+where(Name) when is_atom(Name) ->
+    erlang:whereis(Name);
+where({global, Name}) ->
+    global:whereis_name(Name);
+where({via, Module, Name}) ->
+    Module:whereis_name(Name);
+where(Pid) when is_pid(Pid) ->
+    Pid.
